@@ -299,8 +299,10 @@ impl Env {
                 // Save the PID of the process running the exec file provided
                 // inside <chroot_exec_file>.pid file.
                 self.save_exec_file_pid(child_pid, chroot_exec_file)?;
-                // SAFETY: This is safe because 0 is valid input to exit.
-                unsafe { libc::exit(0) }
+                // This allows the calling function to handle the success 
+                // case and exit the process properly. May need to adjust the FcExitCode enum 
+                // to specific error handling design. Should work for general cases.
+                return Err(FcExitCode::Ok);
             }
         }
     }
@@ -598,7 +600,18 @@ impl Env {
 
         // If specified, exec the provided binary into a new PID namespace.
         if self.new_pid_ns {
-            self.exec_into_new_pid_ns(chroot_exec_file)
+            match self.exec_into_new_pid_ns(chroot_exec_file) {
+                Ok(_) => unreachable!(), // This should never be reached if exec_into_new_pid_ns is successful
+                Err(FcExitCode::Ok) => {
+                    std::process::exit(0); // Exit the current process with a successful exit code
+                }
+                Err(err_code) => {
+                    // Handle other error cases as needed.
+                    // Depending on  error handling strategy, may propagate the error
+                    // or handle it in some other way.
+                    return Err(Error::Exec(format!("Error in exec_into_new_pid_ns: {:?}", err_code)));
+                }
+            }
         } else {
             Err(Error::Exec(self.exec_command(chroot_exec_file)))
         }
